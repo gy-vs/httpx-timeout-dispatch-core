@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 * Fix `app` type signature in `ASGITransport`. (#3109)
+* The client-level `timeout` configuration is now applied when sending a manually constructed `httpx.Request()` with `client.send(...)`, unless the request already includes a "timeout" extension.
 
 ## 0.27.0 (21st February, 2024)
 

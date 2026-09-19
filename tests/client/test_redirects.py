@@ -166,6 +166,89 @@ async def test_async_next_request():
         assert response.next_request is None
 
 
+def test_manual_request_redirect_applies_client_timeout():
+    """
+    Redirects of a manually constructed `httpx.Request` should include
+    the client-level timeout.
+    """
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return redirects(request)
+
+    timeout = httpx.Timeout(10.0, read=20.0)
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        timeout=timeout,
+        follow_redirects=True,
+    )
+    request = httpx.Request("GET", "https://example.org/redirect_303")
+    response = client.send(request)
+
+    assert response.status_code == httpx.codes.OK
+    assert len(requests) == 2
+    for sent_request in requests:
+        assert sent_request.extensions["timeout"] == timeout.as_dict()
+
+
+def test_manual_request_redirect_with_timeout_extension():
+    """
+    A "timeout" extension on a manually constructed `httpx.Request`
+    takes priority over the client-level timeout, including on redirects.
+    """
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return redirects(request)
+
+    timeout = httpx.Timeout(None, connect=5.0)
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        timeout=10.0,
+        follow_redirects=True,
+    )
+    request = httpx.Request(
+        "GET",
+        "https://example.org/redirect_303",
+        extensions={"timeout": timeout.as_dict()},
+    )
+    response = client.send(request)
+
+    assert response.status_code == httpx.codes.OK
+    assert len(requests) == 2
+    for sent_request in requests:
+        assert sent_request.extensions["timeout"] == timeout.as_dict()
+
+
+@pytest.mark.anyio
+async def test_async_manual_request_redirect_applies_client_timeout():
+    """
+    Redirects of a manually constructed `httpx.Request` should include
+    the client-level timeout.
+    """
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return redirects(request)
+
+    timeout = httpx.Timeout(10.0, read=20.0)
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        timeout=timeout,
+        follow_redirects=True,
+    ) as client:
+        request = httpx.Request("GET", "https://example.org/redirect_303")
+        response = await client.send(request)
+
+    assert response.status_code == httpx.codes.OK
+    assert len(requests) == 2
+    for sent_request in requests:
+        assert sent_request.extensions["timeout"] == timeout.as_dict()
+
+
 def test_head_redirect():
     """
     Contrary to Requests, redirects remain enabled by default for HEAD requests.

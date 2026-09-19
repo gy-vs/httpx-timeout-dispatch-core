@@ -52,6 +52,87 @@ async def test_build_request(server):
 
 
 @pytest.mark.anyio
+async def test_send_manual_request_applies_client_timeout():
+    """
+    A manually constructed `httpx.Request` should have the client-level
+    timeout applied when sent with `client.send(...)`.
+    """
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text="Hello, world!")
+
+    timeout = httpx.Timeout(10.0, read=20.0)
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), timeout=timeout
+    ) as client:
+        request = httpx.Request(
+            "GET", "http://example.org/", extensions={"custom": "value"}
+        )
+        response = await client.send(request)
+
+    assert response.status_code == 200
+    assert requests[0].extensions["timeout"] == timeout.as_dict()
+    # Any existing extensions should be preserved.
+    assert requests[0].extensions["custom"] == "value"
+
+
+@pytest.mark.anyio
+async def test_send_manual_request_with_timeout_extension():
+    """
+    A "timeout" extension on a manually constructed `httpx.Request`
+    takes priority over the client-level timeout.
+    """
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text="Hello, world!")
+
+    timeout = httpx.Timeout(None, connect=5.0)
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), timeout=10.0
+    ) as client:
+        request = httpx.Request(
+            "GET", "http://example.org/", extensions={"timeout": timeout.as_dict()}
+        )
+        response = await client.send(request)
+
+    assert response.status_code == 200
+    assert requests[0].extensions["timeout"] == timeout.as_dict()
+
+
+@pytest.mark.anyio
+async def test_send_manual_request_auth_flow_applies_client_timeout():
+    """
+    Auth flows should see the same request extensions for a manually
+    constructed `httpx.Request` as for one built with `build_request()`.
+    """
+    requests = []
+
+    class RecordAuth(httpx.Auth):
+        def auth_flow(
+            self, request: httpx.Request
+        ) -> typing.Generator[httpx.Request, httpx.Response, None]:
+            requests.append(request)
+            yield request
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="Hello, world!")
+
+    timeout = httpx.Timeout(10.0)
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), timeout=timeout
+    ) as client:
+        request = httpx.Request("GET", "http://example.org/")
+        response = await client.send(request, auth=RecordAuth())
+
+    assert response.status_code == 200
+    assert requests[0].extensions["timeout"] == timeout.as_dict()
+
+
+@pytest.mark.anyio
 async def test_post(server):
     url = server.url
     async with httpx.AsyncClient() as client:

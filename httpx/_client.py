@@ -453,6 +453,19 @@ class BaseClient:
 
         return Auth()
 
+    def _merge_request_timeout(self, request: Request) -> Request:
+        """
+        Merge the client-level timeout into a request, unless the request
+        already includes a "timeout" extension.
+
+        Requests built using `build_request()` will already include this,
+        but requests instantiated directly with `httpx.Request()` may not.
+        """
+        if "timeout" not in request.extensions:
+            extensions = dict(**request.extensions, timeout=self.timeout.as_dict())
+            request.extensions = extensions
+        return request
+
     def _build_redirect_request(self, request: Request, response: Response) -> Request:
         """
         Given a request and a redirect response, return a new request that
@@ -891,7 +904,9 @@ class Client(BaseClient):
         """
         Send a request.
 
-        The request is sent as-is, unmodified.
+        The request is sent as-is, except that the client-level timeout
+        is applied if the request does not already include a "timeout"
+        extension.
 
         Typically you'll want to build one with `Client.build_request()`
         so that any client-level configuration is merged into the request,
@@ -911,6 +926,7 @@ class Client(BaseClient):
             else follow_redirects
         )
 
+        request = self._merge_request_timeout(request)
         auth = self._build_request_auth(request, auth)
 
         response = self._send_handling_auth(
@@ -1638,7 +1654,9 @@ class AsyncClient(BaseClient):
         """
         Send a request.
 
-        The request is sent as-is, unmodified.
+        The request is sent as-is, except that the client-level timeout
+        is applied if the request does not already include a "timeout"
+        extension.
 
         Typically you'll want to build one with `AsyncClient.build_request()`
         so that any client-level configuration is merged into the request,
@@ -1658,6 +1676,7 @@ class AsyncClient(BaseClient):
             else follow_redirects
         )
 
+        request = self._merge_request_timeout(request)
         auth = self._build_request_auth(request, auth)
 
         response = await self._send_handling_auth(
