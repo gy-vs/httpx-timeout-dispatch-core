@@ -369,6 +369,12 @@ class BaseClient:
             extensions=extensions,
         )
 
+    def _set_default_timeout(self, request: Request) -> None:
+        if "timeout" not in request.extensions:
+            request.extensions = dict(
+                **request.extensions, timeout=self.timeout.as_dict()
+            )
+
     def _merge_url(self, url: URLTypes) -> URL:
         """
         Merge a URL argument together with any 'base_url' on the client,
@@ -891,7 +897,8 @@ class Client(BaseClient):
         """
         Send a request.
 
-        The request is sent as-is, unmodified.
+        The request is sent as-is, except that the client's default timeout
+        configuration is added if the request does not include one.
 
         Typically you'll want to build one with `Client.build_request()`
         so that any client-level configuration is merged into the request,
@@ -905,6 +912,7 @@ class Client(BaseClient):
             raise RuntimeError("Cannot send a request, as the client has been closed.")
 
         self._state = ClientState.OPENED
+        self._set_default_timeout(request)
         follow_redirects = (
             self.follow_redirects
             if isinstance(follow_redirects, UseClientDefault)
@@ -974,6 +982,8 @@ class Client(BaseClient):
                 raise TooManyRedirects(
                     "Exceeded maximum allowed redirects.", request=request
                 )
+
+            self._set_default_timeout(request)
 
             for hook in self._event_hooks["request"]:
                 hook(request)
@@ -1638,7 +1648,8 @@ class AsyncClient(BaseClient):
         """
         Send a request.
 
-        The request is sent as-is, unmodified.
+        The request is sent as-is, except that the client's default timeout
+        configuration is added if the request does not include one.
 
         Typically you'll want to build one with `AsyncClient.build_request()`
         so that any client-level configuration is merged into the request,
@@ -1652,6 +1663,7 @@ class AsyncClient(BaseClient):
             raise RuntimeError("Cannot send a request, as the client has been closed.")
 
         self._state = ClientState.OPENED
+        self._set_default_timeout(request)
         follow_redirects = (
             self.follow_redirects
             if isinstance(follow_redirects, UseClientDefault)
@@ -1721,6 +1733,8 @@ class AsyncClient(BaseClient):
                 raise TooManyRedirects(
                     "Exceeded maximum allowed redirects.", request=request
                 )
+
+            self._set_default_timeout(request)
 
             for hook in self._event_hooks["request"]:
                 await hook(request)
